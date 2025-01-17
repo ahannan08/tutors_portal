@@ -1,83 +1,151 @@
+// context/EnhancedUserContext.tsx
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useUser } from '@clerk/clerk-expo';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from './firebase';
+import { useRouter } from 'expo-router';
 
-// Define types for additional user data
 interface EnhancedUserData {
-  // Clerk data
   clerkId: string | null;
   email: string | null;
   firstName: string | null;
   lastName: string | null;
   profileImage: string | null;
-  
-  // Additional custom data
+  role?: 'tutor' | 'student' | null;
   preferences?: {
     theme?: 'light' | 'dark';
     notifications?: boolean;
-    // Add more preferences as needed
   };
-  // Add any other custom fields you need
 }
 
 interface EnhancedUserContextType {
   enhancedUser: EnhancedUserData | null;
-  updateUserPreferences: (preferences: any) => void;
-  // Add other methods as needed
+  updateUserRole: (role: 'tutor' | 'student') => Promise<void>;
+  isLoading: boolean;
 }
 
 const EnhancedUserContext = createContext<EnhancedUserContextType | undefined>(undefined);
 
 export function EnhancedUserProvider({ children }: { children: ReactNode }) {
-  const { user, isLoaded } = useUser();
+  const { user, isLoaded: isClerkLoaded } = useUser();
   const [enhancedUser, setEnhancedUser] = useState<EnhancedUserData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
-    if (isLoaded && user) {
-      // Set initial user data from Clerk
-      setEnhancedUser({
-        clerkId: user.id,
-        email: user.primaryEmailAddress?.emailAddress || null,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        profileImage: user.imageUrl,
-        preferences: {
-          theme: 'light',
-          notifications: true,
-        }
-      });
+    let isMounted = true;
 
-      // Here you could also fetch additional user data from your backend
-      // fetchAdditionalUserData(user.id);
-    } else {
-      setEnhancedUser(null);
-    }
-  }, [user, isLoaded]);
-
-  const updateUserPreferences = (newPreferences: any) => {
-    setEnhancedUser(prev => prev ? {
-      ...prev,
-      preferences: {
-        ...prev.preferences,
-        ...newPreferences
+    async function handleUserAuth() {
+      if (!isClerkLoaded || !user) {
+        console.log('🔄 No user or Clerk still loading');
+        setIsLoading(false);
+        setEnhancedUser(null);
+        return;
       }
-    } : null);
+
+      console.log('👤 Clerk user loaded:', user.id);
+
+      try {
+        // Check if user exists in Firestore
+        const userDocRef = doc(db, 'users', user.id);
+        const userDoc = await getDoc(userDocRef);
+
+        if (userDoc.exists()) {
+          console.log('📚 User exists in Firestore:', userDoc.data());
+          const userData = userDoc.data() as EnhancedUserData;
+          
+          if (isMounted) {
+            setEnhancedUser(userData);
+            setIsLoading(false);
+          }
+
+          if (userData.role) {
+            console.log('🎭 User role found:', userData.role);
+            router.push('/pages/Home');
+          } else {
+            console.log('❓ No role found, redirecting to role selection');
+            router.push('/pages/Role');
+          }
+        } else {
+          console.log('🆕 Creating new user document in Firestore');
+          const newUserData: EnhancedUserData = {
+            clerkId: user.id,
+            email: user.primaryEmailAddress?.emailAddress || null,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            profileImage: user.imageUrl,
+            role: null,
+            preferences: {
+              theme: 'light',
+              notifications: true,
+            }
+          };
+
+          await setDoc(userDocRef, newUserData);
+          console.log('✅ New user document created');
+          
+          if (isMounted) {
+            setEnhancedUser(newUserData);
+            setIsLoading(false);
+          }
+          
+          console.log('🔄 Redirecting to role selection');
+          router.push('/pages/Role');
+        }
+      } catch (error) {
+        console.error('❌ Error in auth flow:', error);
+        setIsLoading(false);
+      }
+    }
+
+    handleUserAuth();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user, isClerkLoaded]);
+
+  const updateUserRole = async (role: 'tutor' | 'student') => {
+    if (!user?.id || !enhancedUser) {
+      console.error('❌ No user found when updating role');
+      return;
+    }
+
+    try {
+      console.log('🔄 Updating user role to:', role);
+      const userDocRef = doc(db, 'users', user.id);
+      
+      const updatedUserData = {
+        ...enhancedUser,
+        role
+      };
+
+      await setDoc(userDocRef, updatedUserData, { merge: true });
+      console.log('✅ Role updated successfully');
+      
+      setEnhancedUser(updatedUserData);
+      router.push('/pages/Home');
+    } catch (error) {
+      console.error('❌ Error updating role:', error);
+      throw error;
+    }
   };
 
   return (
     <EnhancedUserContext.Provider value={{ 
       enhancedUser, 
-      updateUserPreferences 
+      updateUserRole,
+      isLoading 
     }}>
       {children}
     </EnhancedUserContext.Provider>
   );
 }
 
-// Custom hook to use the enhanced user context
 export const useEnhancedUser = () => {
   const context = useContext(EnhancedUserContext);
   if (context === undefined) {
     throw new Error('useEnhancedUser must be used within an EnhancedUserProvider');
   }
   return context;
-}; 
+};
