@@ -1,12 +1,14 @@
+// pages/TutorProfile.tsx
 import { View, Text, Image, StyleSheet, Button, Modal } from 'react-native';
 import React, { useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
-import tutorsData from '../data/tutorsData'; // Adjust the import path based on your file structure
-import { Calendar } from 'react-native-calendars'; // Import the Calendar component
+import tutorsData from '../data/tutorsData';
+import Booking from './Booking'; 
 
 const TutorProfile = () => {
   const params = useLocalSearchParams();
   const tutorId = params.tutorId;
+  const [modalVisible, setModalVisible] = useState(false);
 
   const tutor = tutorsData.find(t => t.id === Number(tutorId));
 
@@ -18,22 +20,9 @@ const TutorProfile = () => {
     );
   }
 
-  // State for modal visibility and selected date
-  const [modalVisible, setModalVisible] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<{ day: string; month: string; year: string } | undefined>(undefined);
-
-  const onDayPress = (day: { dateString: string; year: number; month: number; day: number }) => {
-    setSelectedDate({
-      day: day.day.toString(),
-      month: day.month.toString(),
-      year: day.year.toString(),
-    });
-  };
-
-  const handleConfirmBooking = () => {
-    // Logic to handle booking confirmation
-    console.log('Booking confirmed for:', selectedDate);
-    setModalVisible(false); // Close the modal after confirming
+  const handleBookingComplete = () => {
+    console.log('Booking completed for tutor:', tutorId);
+    setModalVisible(false);
   };
 
   return (
@@ -67,7 +56,6 @@ const TutorProfile = () => {
 
       <Button title="Book Me" onPress={() => setModalVisible(true)} />
 
-      {/* Modal for Calendar */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -77,18 +65,11 @@ const TutorProfile = () => {
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Select a Date for Booking</Text>
-            <Calendar
-              onDayPress={onDayPress}
-              markedDates={{
-                [selectedDate ? `${selectedDate.year}-${selectedDate.month}-${selectedDate.day}` : '']: { selected: true, marked: true, selectedColor: 'blue' },
-              }}
+            <Booking 
+              tutorId={tutorId}
+              onBookingComplete={handleBookingComplete}
+              onClose={() => setModalVisible(false)}
             />
-            <Button
-              title="Confirm Booking"
-              onPress={handleConfirmBooking}
-              disabled={!selectedDate} // Disable button if no date is selected
-            />
-            <Button title="Close" onPress={() => setModalVisible(false)} />
           </View>
         </View>
       </Modal>
@@ -185,18 +166,18 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)', // Semi-transparent background
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   modalContent: {
-    width: '80%',
+    width: '90%',
     backgroundColor: 'white',
     borderRadius: 10,
     padding: 20,
-    alignItems: 'center',
   },
   modalTitle: {
     fontSize: 20,
     marginBottom: 15,
+    textAlign: 'center',
   },
 });
 
